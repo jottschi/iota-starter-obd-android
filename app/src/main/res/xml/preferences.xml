@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory
+        android:key="iotp_settings"
+        android:title="IoT Platform">
+
+        <EditTextPreference
+            android:key="organization_id"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="Organization ID" />
+        <EditTextPreference
+            android:key="api_key"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="API Key" />
+        <EditTextPreference
+            android:key="api_token"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="API Token" />
+        <EditTextPreference
+            android:key="device_id"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="Device ID" />
+        <EditTextPreference
+            android:key="device_token"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="Device Token" />
+        <EditTextPreference
+            android:key="upload_frequency"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="Upload/OBD2 Scan Frequency" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:key="obd2_settings"
+        android:title="OBD2 Device">
+        <EditTextPreference
+            android:key="bt_device_name"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="Bluetooth Device Name" />
+        <EditTextPreference
+            android:key="bt_device_address"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="Bluetooth Device Address" />
+    </PreferenceCategory>
+</PreferenceScreen>

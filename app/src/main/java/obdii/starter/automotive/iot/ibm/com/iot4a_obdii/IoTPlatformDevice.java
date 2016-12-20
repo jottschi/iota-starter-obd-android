@@ -10,15 +10,23 @@
 
 package obdii.starter.automotive.iot.ibm.com.iot4a_obdii;
 
+import android.support.annotation.NonNull;
+import android.util.Log;
+
 import com.google.gson.JsonObject;
 import com.ibm.iotf.client.device.DeviceClient;
 
 import org.eclipse.paho.client.mqttv3.MqttException;
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.Properties;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 /*
  IoT Platform Device Client
@@ -26,35 +34,73 @@ import java.util.TimerTask;
 
 public class IoTPlatformDevice {
 
-    static interface ProbeDatatGenerator {
+
+    // Platform parameters
+    static final String defaultOrganizationId = "Set Your IoT Platform Organization ID";
+    static final String defaultApiKey = "Set Your IoT Platform API Key";
+    static final String defaultApiToken = "Set Your IoT Platform API Token";
+
+    private static final String typeId = "OBDII";
+
+    @NonNull
+    private static final String getIoTPAPIURL(final String organizationId) {
+        return "https://" + organizationId + ".internetofthings.ibmcloud.com/api/v0002";
+    }
+
+    @NonNull
+    private static final String getIoTPAddDevicesEndPoint(final String organizationId) {
+        return getIoTPAPIURL(organizationId) + "/bulk/devices/add";
+    }
+
+    @NonNull
+    private static String getIoTPGetDeviceEndpoint(final String organizationId, final String device_id) {
+        return getIoTPAPIURL(organizationId) + "/device/types/" + typeId + "/devices/" + device_id;
+    }
+
+    static interface ProbeDataGenerator {
         public JsonObject generateData();
 
         public void notifyPostResult(boolean success, JsonObject event);
     }
 
+    public static abstract class ResponseListener implements API.doRequest.TaskListener {
+
+        @Override
+        public void postExecute(JSONArray result) throws JSONException {
+            final JSONObject serverResponse = result.getJSONObject(result.length() - 1);
+            final int statusCode = serverResponse.getInt("statusCode");
+            response(statusCode, result);
+        }
+
+        protected abstract void response(int statusCode, JSONArray result);
+
+    }
+
+    private String organizationId = null;
+    private String apiKey = null;
+    private String apiToken = null;
+
     private DeviceClient deviceClient = null;
     private JSONObject currentDevice;
 
-    private int uploadTimerDelay = 5000;
-    private int uploadTimerPeriod = 15000;
-    private Timer uploadTimer;
 
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private ScheduledFuture<?> uploadHandler = null;
 
-    public void setDeviceDefinition(JSONObject deviceDefinition) {
-        currentDevice = deviceDefinition;
-        if (deviceClient != null) {
-            disconnectDevice();
-            deviceClient = null;
-        }
+    void clean() {
+        stopPublishing();
+        scheduler.shutdown();
     }
+
 
     public String getDeviceToken(final String deviceId) {
         final String sharedPrefsKey = "iota-obdii-auth-" + deviceId;
-        return API.getStoredData(sharedPrefsKey);
+        final String deviceToken = API.getStoredData(sharedPrefsKey);
+        return API.DOESNOTEXIST.equals(deviceToken) ? "" : deviceToken;
     }
 
     public boolean hasDeviceToken(final String deviceId) {
-        return !API.DOESNOTEXIST.equals(getDeviceToken(deviceId));
+        return !"".equals(getDeviceToken(deviceId));
     }
 
     public void setDeviceToken(final String deviceId, final String authToken) {
@@ -64,16 +110,34 @@ public class IoTPlatformDevice {
         }
     }
 
-    public synchronized DeviceClient createDeviceClient() throws Exception {
+    private String getCredentialsBase64() {
+        return API.getCredentialsBase64(apiKey, apiToken);
+    }
+
+    public boolean hasValidOrganization() {
+        return organizationId != null && !"".equals(organizationId);
+    }
+
+    public synchronized boolean createDeviceClient(final JSONObject deviceDefinition) throws Exception {
+        if (deviceDefinition != null) {
+            if (deviceClient != null) {
+                disconnectDevice();
+            }
+            currentDevice = deviceDefinition;
+        }
         if (deviceClient != null) {
-            return deviceClient;
+            return true;
         }
         if (currentDevice == null) {
-            throw new NoDeviceDefinition();
+            throw new NoDeviceDefinitionException();
         }
+        if (!hasValidOrganization()) {
+            throw new NoIoTPOrganizationException();
+        }
+
         final Properties options = new Properties();
-        options.setProperty("org", API.orgId);
-        options.setProperty("type", API.typeId);
+        options.setProperty("org", organizationId);
+        options.setProperty("type", typeId);
         final String deviceId = currentDevice.getString("deviceId");
         options.setProperty("id", deviceId);
         options.setProperty("auth-method", "token");
@@ -81,39 +145,69 @@ public class IoTPlatformDevice {
         options.setProperty("auth-token", token);
 
         deviceClient = new DeviceClient(options);
-        System.out.println("IOTP DEVICE CLIENT CREATED: "+options.toString());
-        return deviceClient;
+        System.out.println("IOTP DEVICE CLIENT CREATED: " + options.toString());
+        return true;
     }
 
-    public void connectDevice() throws MqttException {
+
+    public void checkDeviceRegistration(final ResponseListener listener, final String device_id) throws InterruptedException, ExecutionException, NoIoTPOrganizationException {
+        if (!hasValidOrganization()) {
+            throw new NoIoTPOrganizationException();
+        }
+        final API.doRequest task = new API.doRequest(listener);
+        final String url = getIoTPGetDeviceEndpoint(organizationId, device_id);
+        task.execute(url, "GET", null, null, getCredentialsBase64()).get();
+        System.out.println("CHECKING DEVICE REGISTRATION SUCCESSFULLY DONE......");
+        Log.d("Got", url);
+    }
+
+
+    public void requestDeviceRegistration(final ResponseListener listener, final String device_id) throws InterruptedException, ExecutionException, NoIoTPOrganizationException {
+        if (!hasValidOrganization()) {
+            throw new NoIoTPOrganizationException();
+        }
+        final API.doRequest task = new API.doRequest(listener);
+        try {
+            final String url = getIoTPAddDevicesEndPoint(organizationId);
+            final JSONArray bodyArray = new JSONArray();
+            final JSONObject bodyObject = new JSONObject();
+            bodyObject
+                    .put("typeId", typeId)
+                    .put("deviceId", device_id);
+            bodyArray
+                    .put(bodyObject);
+            final String payload = bodyArray.toString();
+            task.execute(url, "POST", null, payload, getCredentialsBase64()).get();
+
+            System.out.println("REGISTER DEVICE REQUEST SUCCESSFULLY POSTED......");
+            Log.d("Posted", payload);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    public synchronized void connectDevice() throws MqttException {
         if (deviceClient != null && !deviceClient.isConnected()) {
             deviceClient.connect();
         }
     }
 
-    public void disconnectDevice() {
+    public synchronized void disconnectDevice() {
         if (deviceClient != null && deviceClient.isConnected()) {
             deviceClient.disconnect();
         }
         deviceClient = null;
     }
 
-
-    public int getUploadTimerPeriod() {
-        return uploadTimerPeriod;
+    public synchronized boolean isConnected() {
+        return deviceClient != null && deviceClient.isConnected();
     }
 
-    public void setUploadTimerPeriod(final int value) {
-        uploadTimerPeriod = value;
-    }
-
-    public synchronized void startPublishing(final ProbeDatatGenerator eventGenerator) {
-        // stop existing uploadTimer
+    public synchronized void startPublishing(final ProbeDataGenerator eventGenerator, final int uploadDelayMS, final int uploadIntervalMS) {
         stopPublishing();
 
-        // start new uploadTimer
-        uploadTimer = new Timer();
-        uploadTimer.scheduleAtFixedRate(new TimerTask() {
+        uploadHandler = scheduler.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -127,13 +221,13 @@ public class IoTPlatformDevice {
                     e.printStackTrace();
                 }
             }
-        }, uploadTimerDelay, uploadTimerPeriod);
+        }, uploadDelayMS, uploadIntervalMS, TimeUnit.MILLISECONDS);
     }
 
     public synchronized void stopPublishing() {
-        if (uploadTimer != null) {
-            uploadTimer.cancel();
-            uploadTimer = null;
+        if (uploadHandler != null) {
+            uploadHandler.cancel(true);
+            uploadHandler = null;
         }
     }
 
@@ -147,5 +241,33 @@ public class IoTPlatformDevice {
         } else {
             return false;
         }
+    }
+
+    public final boolean isCurrentOrganizationSameAs(final String newId) {
+        return organizationId != null && organizationId.equals(newId);
+    }
+
+    public void changeOrganization(final String newOrdId, final String newApiKey, final String newApiToken) {
+        if (isCurrentOrganizationSameAs(newOrdId)) {
+            return;
+        }
+        stopPublishing();
+        disconnectDevice();
+
+        this.organizationId = newOrdId;
+        this.apiKey = newApiKey;
+        this.apiToken = newApiToken;
+    }
+
+    public String getOrganizationId() {
+        return organizationId;
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public String getApiToken() {
+        return apiToken;
     }
 }

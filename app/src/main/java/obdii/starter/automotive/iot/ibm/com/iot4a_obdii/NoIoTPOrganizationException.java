@@ -10,7 +10,5 @@
 
 package obdii.starter.automotive.iot.ibm.com.iot4a_obdii;
 
-public class NoDeviceDefinition extends Exception {
-    public NoDeviceDefinition() {
-    }
+public class NoIoTPOrganizationException extends Exception {
 }
