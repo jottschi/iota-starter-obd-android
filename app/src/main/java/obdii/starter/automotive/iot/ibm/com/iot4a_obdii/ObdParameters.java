@@ -3,15 +3,15 @@
  * <p>
  * Licensed under the IBM License, a copy of which may be obtained at:
  * <p>
- * http://www14.software.ibm.com/cgi-bin/weblap/lap.pl?li_formnum=L-DDIN-AEGGZJ&popup=y&title=IBM%20IoT%20for%20Automotive%20Sample%20Starter%20Apps%20%28Android-Mobile%20and%20Server-all%29
+ * http://www14.software.ibm.com/cgi-bin/weblap/lap.pl?li_formnum=L-DDIN-AHKPKY&popup=n&title=IBM%20IoT%20for%20Automotive%20Sample%20Starter%20Apps%20%28Android-Mobile%20and%20Server-all%29
  * <p>
  * You may not use this file except in compliance with the license.
  */
 
 package obdii.starter.automotive.iot.ibm.com.iot4a_obdii;
 
+import android.location.Location;
 import android.support.annotation.NonNull;
-import android.support.v7.app.AppCompatActivity;
 import android.widget.TextView;
 
 import com.github.pires.obd.commands.ObdCommand;
@@ -44,7 +44,7 @@ public class ObdParameters {
     }
 
     @NonNull
-    static public List<ObdParameter> getObdParameterList(final AppCompatActivity activity) {
+    static public List<ObdParameter> getObdParameterList(final Home activity) {
         final List<ObdParameter> obdParameters = new ArrayList<ObdParameter>();
 
         final ObdParameter engineRPM = new ObdParameter((TextView) activity.findViewById(R.id.engineRPMValue), activity, "Engine RPM", new RPMCommand()) {
@@ -219,8 +219,9 @@ public class ObdParameters {
 
             @Override
             protected void fetchValue(ObdCommand obdCommand, boolean simulation) {
-                if (Home.location != null) {
-                    longitudeValue = Home.location.getLongitude();
+                final Location location = activity.getLocation();
+                if (location != null) {
+                    longitudeValue = location.getLongitude();
                 }
                 valueText = String.format("%1$.7f", longitudeValue);
             }
@@ -248,8 +249,9 @@ public class ObdParameters {
 
             @Override
             protected void fetchValue(ObdCommand obdCommand, boolean simulation) {
-                if (Home.location != null) {
-                    latitude = Home.location.getLatitude();
+                final Location location = activity.getLocation();
+                if (location != null) {
+                    latitude = location.getLatitude();
                 }
                 valueText = valueText = String.format("%1$.7f", latitude);
             }
@@ -273,5 +275,4 @@ public class ObdParameters {
 
         return obdParameters;
     }
-
 }

@@ -3,7 +3,7 @@
  * <p>
  * Licensed under the IBM License, a copy of which may be obtained at:
  * <p>
- * http://www14.software.ibm.com/cgi-bin/weblap/lap.pl?li_formnum=L-DDIN-AEGGZJ&popup=y&title=IBM%20IoT%20for%20Automotive%20Sample%20Starter%20Apps%20%28Android-Mobile%20and%20Server-all%29
+ * http://www14.software.ibm.com/cgi-bin/weblap/lap.pl?li_formnum=L-DDIN-AHKPKY&popup=n&title=IBM%20IoT%20for%20Automotive%20Sample%20Starter%20Apps%20%28Android-Mobile%20and%20Server-all%29
  * <p>
  * You may not use this file except in compliance with the license.
  */
@@ -11,7 +11,6 @@
 package obdii.starter.automotive.iot.ibm.com.iot4a_obdii;
 
 import android.app.Activity;
-import android.bluetooth.BluetoothSocket;
 import android.util.Log;
 import android.widget.TextView;
 
@@ -47,7 +46,7 @@ abstract public class ObdParameter {
         return obdCommand;
     }
 
-    public synchronized void showScannedValue(final BluetoothSocket socket, final boolean simulation) {
+    public synchronized void showScannedValue(final InputStream in, final OutputStream out, final boolean simulation) {
         if (simulation) {
             fetchValue(null, simulation);
             showText(getValueText());
@@ -57,29 +56,27 @@ abstract public class ObdParameter {
             showText(getValueText());
         } else {
             String value = "";
-            if (socket == null) {
+            if (in == null || out == null) {
                 value = "No BT Connection";
             } else {
                 try {
-                    final InputStream in = socket.getInputStream();
-                    final OutputStream out = socket.getOutputStream();
                     obdCommand.run(in, out);
                     fetchValue(obdCommand, simulation);
                     value = getValueText();
                     Log.d(label, value);
                 } catch (com.github.pires.obd.exceptions.UnableToConnectException e) {
-                    // reach here when OBD device is not connected
-                    value = "BT Connection Error";
+                    // reach here when OBD device is not connected to the vehicle
+                    value = "Vehicle Not Connected";
                 } catch (com.github.pires.obd.exceptions.NoDataException e) {
                     // reach here when this OBD parameter is not supported
-                    value = "No Data";
+                    value = "No OBD2 Data";
                     //e.printStackTrace();
                 } catch (com.github.pires.obd.exceptions.MisunderstoodCommandException e) {
-                    value = "Not Supported";
+                    value = "Misunderstood";
                     System.err.println("OBD Library Error: " + e.getMessage());
                     //e.printStackTrace();
                 } catch (Exception e) {
-                    value = "No Connection";
+                    value = "Command Failed";
                     e.printStackTrace();
                 }
             }
